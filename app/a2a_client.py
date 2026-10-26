@@ -43,39 +43,16 @@ def _extract_a2ui_feeds(payload: object) -> list[dict]:
 
 
 class ChainlinkA2AAuthTransport(httpx.AsyncBaseTransport):
-    """HTTPX transport for ADK RemoteA2aAgent supporting DCR Bearer auth and Gemini Enterprise Gateway."""
+    """HTTPX transport for ADK RemoteA2aAgent using Google Cloud ADC against the Discovery Engine A2A Gateway."""
 
     def __init__(self) -> None:
         self._inner = httpx.AsyncHTTPTransport()
 
     async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        # Allow Agent Card discovery (/.well-known/agent.json) to pass through directly
         if request.method == "GET":
             return await self._inner.handle_async_request(request)
 
-        # Mode 1: Direct OAuth 2.0 DCR Bearer token against the Chainlink A2A endpoint
-        token = os.environ.get("CHAINLINK_A2A_TOKEN", "").strip()
-        client_id = os.environ.get("CHAINLINK_CLIENT_ID", "").strip()
-        client_secret = os.environ.get("CHAINLINK_CLIENT_SECRET", "").strip()
-
-        if not token and client_id and client_secret:
-            a2a_url = os.environ.get("CHAINLINK_A2A_URL", "").rstrip("/")
-            async with httpx.AsyncClient(transport=self._inner, timeout=15.0) as client:
-                resp = await client.post(
-                    f"{a2a_url}/oauth/token",
-                    data={
-                        "grant_type": "client_credentials",
-                        "client_id": client_id,
-                        "client_secret": client_secret,
-                    },
-                )
-                resp.raise_for_status()
-                token = resp.json().get("access_token", "")
-
-        if token:
-            request.headers["Authorization"] = f"Bearer {token}"
-            return await self._inner.handle_async_request(request)
-
-        # Mode 2: Gemini Enterprise Discovery Engine A2A Gateway (Google-managed DCR)
         discovery_url = os.environ.get("CHAINLINK_DISCOVERY_ENGINE_A2A_URL", "").strip()
         if not discovery_url and (agent_path := os.environ.get("DISCOVERY_ENGINE_A2A_AGENT", "").strip()):
             discovery_url = f"https://discoveryengine.googleapis.com/v1/{agent_path}/a2a/v1/message:stream"

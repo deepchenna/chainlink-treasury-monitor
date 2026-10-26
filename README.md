@@ -123,14 +123,10 @@ GOOGLE_GENAI_USE_VERTEXAI=TRUE
 # Live Chainlink Data Streams Prices Agent (Google Cloud Marketplace)
 CHAINLINK_A2A_URL=https://<YOUR_CHAINLINK_A2A_AGENT_URL>
 
-# Option 1 (Recommended): Gemini Enterprise A2A Gateway with Managed DCR Credentials
+# Gemini Enterprise A2A Gateway (Google Cloud Managed OAuth 2.0 DCR)
 CHAINLINK_DISCOVERY_ENGINE_A2A_URL=https://discoveryengine.googleapis.com/v1/projects/<PROJECT_NUMBER>/locations/global/collections/default_collection/engines/<ENGINE_ID>/assistants/default_assistant/agents/<AGENT_ID>/a2a/v1/message:stream
+DISCOVERY_ENGINE_A2A_AGENT=projects/<PROJECT_NUMBER>/locations/global/collections/default_collection/engines/<ENGINE_ID>/assistants/default_assistant/agents/<AGENT_ID>
 CHAINLINK_QUOTA_PROJECT=your-gcp-project-id
-
-# Option 2: Direct OAuth 2.0 DCR Client Credentials against Chainlink A2A Endpoint
-CHAINLINK_CLIENT_ID=
-CHAINLINK_CLIENT_SECRET=
-CHAINLINK_A2A_TOKEN=
 
 # Slack Incoming Webhook URL (defaults to local webhook receiver for testing)
 SLACK_WEBHOOK_URL=http://127.0.0.1:8099/slack-webhook
