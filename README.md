@@ -1,17 +1,20 @@
 # Autonomous Treasury Risk Monitor (Chainlink Data Streams + Google Cloud ADK)
 
-An autonomous crypto treasury risk monitoring agent built with **Google's Agent Development Kit (ADK)**, **Google `agents-cli`**, and **Gemini 2.5 Flash**, connected directly to the [**Chainlink Data Streams Price Agent on Google Cloud Marketplace**](https://console.cloud.google.com/marketplace/product/chainlink-labs-ltd-public/chainlink-data-streams-prices-agent) over the **Agent-to-Agent (A2A)** protocol.
+An autonomous multi-agent crypto treasury risk monitor built with **Google's Agent Development Kit (ADK)**, **Google `agents-cli`**, and **Gemini 2.5 Flash**, connected directly to the [**Chainlink Data Streams Price Agent on Google Cloud Marketplace**](https://console.cloud.google.com/marketplace/product/chainlink-labs-ltd-public/chainlink-data-streams-prices-agent) over the **Agent-to-Agent (A2A)** protocol.
 
 ---
 
-## Architecture Overview
+## Multi-Agent Architecture Overview
+
+Instead of writing a custom price-fetching tool, this project uses ADK's **Multi-Agent Architecture** (`SequentialAgent` + `RemoteA2aAgent`) where the remote **Chainlink Data Streams Price Agent** participates directly as a first-class sub-agent in the pipeline:
 
 ```mermaid
 flowchart LR
     subgraph UserEnv["Your Google Cloud Environment (Scaffolded via agents-cli)"]
         Scheduler["Cloud Scheduler / CLI\n(Trigger)"]
-        Orchestrator["Treasury Risk Monitor\n(Google ADK Agent + Gemini)"]
-        RemoteProxy["RemoteA2aAgent & A2A Tool\n(ADK A2A Client)"]
+        Root["treasury_risk_monitor\n(ADK SequentialAgent)"]
+        RemoteOracle["chainlink_data_streams_oracle\n(ADK RemoteA2aAgent)"]
+        RiskEval["treasury_risk_evaluator\n(ADK Agent + Gemini 2.5 Flash)"]
         Slack["Slack Channel\n(#treasury-risk-alerts)"]
     end
 
@@ -20,18 +23,18 @@ flowchart LR
         ChainlinkAgent["Chainlink Data Streams\nPrices Agent (A2A)"]
     end
 
-    Scheduler -->|"Triggers check"| Orchestrator
-    Orchestrator <-->|"Delegates price lookup"| RemoteProxy
-    RemoteProxy <-->|"A2A Stream / JSON-RPC\n(BTC, ETH, SOL, LINK)"| Discovery
+    Scheduler -->|"1. Triggers check"| Root
+    Root -->|"2. Step 1: Delegate A2A turn"| RemoteOracle
+    RemoteOracle <-->|"A2A Protocol\n(BTC, ETH, SOL, LINK)"| Discovery
     Discovery <-->|"Bearer JWT (DCR)"| ChainlinkAgent
-    Orchestrator -->|"Rich Block Kit Alert\n(on threshold breach)"| Slack
+    Root -->|"3. Step 2: Evaluate session feeds"| RiskEval
+    RiskEval -->|"4. evaluate_treasury_risk &\nsend_slack_risk_alert"| Slack
 ```
 
-### Key Capabilities
-* **Sub-Second Verifiable Market Data:** Fetches institutional-grade prices (`BTC/USD`, `ETH/USD`, `SOL/USD`, `LINK/USD`) from Chainlink Data Streams over A2A (`application/json+a2ui` and JSON-RPC 2.0).
-* **Built-In Freshness Guardrails:** Inspects the unix `timestamp` and `stale` flag on every oracle tick before acting.
-* **Deterministic Risk Invariants:** Evaluates total reserve valuation, asset price floors, and DeFi ETH vault collateral health factors (`>= 1.65x`) in pure Python (`evaluate_treasury_risk`) so the LLM never hallucinates arithmetic.
-* **Automated Slack Block Kit Alerting:** Delivers quantitative incident alerts with AI-synthesized remediation steps to Slack (`send_slack_risk_alert`).
+### How the Multi-Agent Pipeline Works
+1. **`chainlink_data_streams_oracle` (`RemoteA2aAgent` in `app/agent.py`):** Resolves the Chainlink agent's `.well-known/agent.json` card (`https://<YOUR_CHAINLINK_A2A_AGENT_URL>/.well-known/agent.json`) and communicates directly with the Chainlink Data Streams Price Agent over A2A (authenticated via `app/a2a_client.py`), emitting live `BTC/USD`, `ETH/USD`, `SOL/USD`, and `LINK/USD` prices and freshness flags into the shared ADK session.
+2. **`treasury_risk_evaluator` (`Agent` in `app/agent.py`):** Powered by **Gemini 2.5 Flash**, reads the verified oracle feed snapshot emitted by `chainlink_data_streams_oracle` from the conversation history, runs deterministic portfolio valuation (`evaluate_treasury_risk`), and dispatches rich Block Kit incident alerts to Slack (`send_slack_risk_alert`).
+3. **`treasury_risk_monitor` (`SequentialAgent` in `app/agent.py`):** Orchestrates the end-to-end multi-agent workflow (`chainlink_price_oracle_agent` $\rightarrow$ `treasury_risk_evaluator_agent`).
 
 ---
 
@@ -40,8 +43,9 @@ flowchart LR
 ```text
 chainlink-treasury-monitor/
 ├── app/
-│   ├── agent.py                # Root ADK Agent + RemoteA2aAgent definition
-│   ├── tools.py                # Chainlink A2A client, risk evaluator & Slack alerter
+│   ├── agent.py                # Multi-agent orchestration (SequentialAgent = RemoteA2aAgent + Agent)
+│   ├── a2a_client.py           # Authenticated HTTPX A2A transport (DCR / Discovery Engine Gateway)
+│   ├── tools.py                # Deterministic risk evaluator & Slack Block Kit alerter
 │   ├── fast_api_app.py         # FastAPI A2A & ADK server entrypoint
 │   └── app_utils/              # A2A card, telemetry & typing utilities
 ├── deployment/                 # Terraform infrastructure templates for Cloud Run
@@ -89,11 +93,6 @@ curl -s -X GET \
 python generate_dcr.py --inspect-gcp --project-id "${PROJECT_ID}"
 ```
 
-This prints your `DISCOVERY_ENGINE_A2A_AGENT` resource path:
-```text
-projects/<PROJECT_NUMBER>/locations/global/collections/default_collection/engines/<ENGINE_ID>/assistants/default_assistant/agents/<AGENT_ID>
-```
-
 ---
 
 ### Step 2: Install Dependencies & Configure Environment
@@ -109,13 +108,11 @@ source .venv/bin/activate
 uv pip install google-agents-cli "google-adk[a2a]" google-genai httpx python-dotenv fastapi uvicorn google-cloud-iam
 ```
 
-Copy `.env.example` to `.env`:
+Copy `.env.example` to `.env` and configure your environment variables:
 
 ```bash
 cp .env.example .env
 ```
-
-Update `.env` with your project settings:
 
 ```dotenv
 # Gemini / Vertex AI Configuration
@@ -125,10 +122,9 @@ GOOGLE_GENAI_USE_VERTEXAI=TRUE
 
 # Live Chainlink Data Streams Prices Agent (Google Cloud Marketplace)
 CHAINLINK_A2A_URL=https://<YOUR_CHAINLINK_A2A_AGENT_URL>
-CHAINLINK_SKILL_ID=render_price_ui
 
 # Option 1 (Recommended): Gemini Enterprise A2A Gateway with Managed DCR Credentials
-DISCOVERY_ENGINE_A2A_AGENT=projects/<PROJECT_NUMBER>/locations/global/collections/default_collection/engines/<ENGINE_ID>/assistants/default_assistant/agents/<AGENT_ID>
+CHAINLINK_DISCOVERY_ENGINE_A2A_URL=https://discoveryengine.googleapis.com/v1/projects/<PROJECT_NUMBER>/locations/global/collections/default_collection/engines/<ENGINE_ID>/assistants/default_assistant/agents/<AGENT_ID>/a2a/v1/message:stream
 CHAINLINK_QUOTA_PROJECT=your-gcp-project-id
 
 # Option 2: Direct OAuth 2.0 DCR Client Credentials against Chainlink A2A Endpoint
@@ -158,7 +154,7 @@ python mock_server.py
 From the repository root:
 
 ```bash
-# One-shot treasury risk check
+# One-shot multi-agent treasury risk check
 agents-cli run "Run an immediate treasury risk check across BTC/USD, ETH/USD, SOL/USD, and LINK/USD."
 
 # Or start an interactive multi-turn chat session
@@ -166,7 +162,7 @@ agents-cli run
 ```
 
 #### 3. Test Visually in the ADK Developer Web UI
-Launch the interactive ADK Web UI to inspect the agent graph, A2A calls, and tool traces in your browser:
+Launch the interactive ADK Web UI to inspect the multi-agent graph (`chainlink_data_streams_oracle` $\rightarrow$ `treasury_risk_evaluator`), A2A calls, and tool traces in your browser:
 
 ```bash
 adk web --port 8080

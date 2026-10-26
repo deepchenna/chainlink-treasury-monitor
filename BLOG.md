@@ -1,4 +1,4 @@
-# Giving Your AI Agent a Price Oracle: Building an Autonomous Treasury Risk Monitor with Chainlink Data Streams and Google Cloud
+# Giving Your AI Agent a Price Oracle: Building an Autonomous Multi-Agent Treasury Risk Monitor with Chainlink Data Streams and Google Cloud
 
 *By Deep Chenna, Web3 Customer Engineer, Google Cloud*
 
@@ -18,7 +18,7 @@ However, giving an AI agent responsibility over financial workflows introduces a
 
 With the launch of the [**Chainlink Data Streams Price Agent on Google Cloud Marketplace**](https://console.cloud.google.com/marketplace/product/chainlink-labs-ltd-public/chainlink-data-streams-prices-agent), you can connect your AI agents directly to Chainlink’s institutional-grade, low-latency market data using the open **Agent-to-Agent (A2A)** protocol.
 
-Let’s look at how to scaffold an **Autonomous Treasury Risk Monitor** using Google’s **`agents-cli`** and **Agent Development Kit (ADK)** that consumes live Chainlink prices over A2A and dispatches automated incident alerts to **Slack**.
+Let’s look at how to scaffold an **Autonomous Multi-Agent Treasury Risk Monitor** using Google’s **`agents-cli`** and **Agent Development Kit (ADK)**—where our local risk-evaluator agent collaborates directly with the remote **Chainlink Data Streams Price Agent** over A2A and dispatches automated incident alerts to **Slack**.
 
 ---
 
@@ -28,20 +28,23 @@ Just as DeFi smart contracts rely on price oracles to calculate collateral ratio
 
 1. **Sub-Second, Tamper-Proof Market Data:** Aggregates liquidity across leading exchanges with cryptographic provenance for major pairs (`BTC/USD`, `ETH/USD`, `SOL/USD`, and `LINK/USD`).
 2. **Built-In Freshness Guardrails:** Every price tick includes a unix `timestamp` and an explicit `stale` boolean flag so your agent never acts on outdated data.
-3. **Standardized A2A Interoperability:** Your ADK agent discovers the Chainlink agent via its `.well-known/agent.json` card (`https://<YOUR_CHAINLINK_A2A_AGENT_URL>/.well-known/agent.json`) and communicates over standard A2A and OAuth 2.0 Dynamic Client Registration (DCR) managed by **Gemini Enterprise**.
+3. **True Multi-Agent Interoperability:** Instead of writing custom price-fetching tools, ADK's `RemoteA2aAgent` discovers the Chainlink agent via its `.well-known/agent.json` card (`https://<YOUR_CHAINLINK_A2A_AGENT_URL>/.well-known/agent.json`) and plugs it directly into a multi-agent workflow alongside your local Gemini risk-evaluation agent.
 
 ---
 
-## Architecture: The Autonomous Treasury Risk Monitor
+## Multi-Agent Architecture: The Autonomous Treasury Risk Monitor
 
-Consider a Web3 protocol or institution managing a multi-asset treasury reserve (`15 BTC`, `250 ETH`, `5,000 SOL`, `25,000 LINK`, and `500,000 USDC`) alongside a DeFi credit vault collateralized by `400 ETH` against `$600,000 USDC` in debt.
+Consider a Web3 protocol or institution managing a multi-asset treasury reserve (`85 BTC`, `1,200 ETH`, `8,500 SOL`, and `45,000 LINK`) subject to strict asset price floors, a `$10,000,000` minimum reserve threshold, and oracle freshness guardrails.
+
+Rather than wrapping price lookups inside a traditional tool function, we model the system as a **two-stage ADK `SequentialAgent` pipeline**:
 
 ```mermaid
 flowchart LR
     subgraph UserEnv["Your Google Cloud Environment (Scaffolded via agents-cli)"]
         Scheduler["Cloud Scheduler / CLI\n(Trigger)"]
-        Orchestrator["Treasury Risk Monitor\n(Google ADK Agent + Gemini)"]
-        RemoteProxy["RemoteA2aAgent & A2A Tool\n(ADK A2A Client)"]
+        Root["treasury_risk_monitor\n(ADK SequentialAgent)"]
+        RemoteOracle["chainlink_data_streams_oracle\n(ADK RemoteA2aAgent)"]
+        RiskEval["treasury_risk_evaluator\n(ADK Agent + Gemini 2.5 Flash)"]
         Slack["Slack Channel\n(#treasury-risk-alerts)"]
     end
 
@@ -50,18 +53,16 @@ flowchart LR
         ChainlinkAgent["Chainlink Data Streams\nPrices Agent (A2A)"]
     end
 
-    Scheduler -->|"Triggers check"| Orchestrator
-    Orchestrator <-->|"Delegates price lookup"| RemoteProxy
-    RemoteProxy <-->|"A2A Stream / JSON-RPC\n(BTC, ETH, SOL, LINK)"| Discovery
+    Scheduler -->|"1. Triggers check"| Root
+    Root -->|"2. Step 1: Delegate A2A turn"| RemoteOracle
+    RemoteOracle <-->|"A2A Protocol\n(BTC, ETH, SOL, LINK)"| Discovery
     Discovery <-->|"Bearer JWT (DCR)"| ChainlinkAgent
-    Orchestrator -->|"Rich Block Kit Alert\n(on threshold breach)"| Slack
+    Root -->|"3. Step 2: Evaluate session feeds"| RiskEval
+    RiskEval -->|"4. evaluate_treasury_risk &\nsend_slack_risk_alert"| Slack
 ```
 
-The agent enforces four strict risk invariants on every check:
-1. **Oracle Freshness:** `stale == false` across all feeds.
-2. **Total Reserve Floor:** Total treasury value must stay above **$2,650,000 USD**.
-3. **Asset Price Floors:** `BTC >= $72,000`, `ETH >= $2,300`, `SOL >= $88`, `LINK >= $9.50`.
-4. **DeFi Collateral Health Factor:** The ETH vault health factor $\left(\frac{\text{Collateral Value} \times 0.80}{\text{Debt}}\right)$ must stay above **1.65x**.
+1. **Stage 1 — `chainlink_data_streams_oracle` (`RemoteA2aAgent`):** Invokes the remote **Chainlink Data Streams Price Agent** over A2A and writes the verified `BTC/USD`, `ETH/USD`, `SOL/USD`, and `LINK/USD` feed snapshot (`pair`, `price`, `timestamp`, `stale`) into the shared ADK session.
+2. **Stage 2 — `treasury_risk_evaluator` (`Agent`):** Powered by **Gemini 2.5 Flash**, reads the oracle feed snapshot emitted by `chainlink_data_streams_oracle` from the session context, runs deterministic portfolio math (`evaluate_treasury_risk`), and dispatches a rich Block Kit incident alert to Slack (`send_slack_risk_alert`) whenever a floor or freshness invariant is breached.
 
 ---
 
@@ -72,160 +73,133 @@ The agent enforces four strict risk invariants on every check:
 Using Google's `agents-cli`, we scaffold a Cloud Run-ready ADK project in a single command:
 
 ```bash
-agents-cli scaffold create treasury-risk-monitor \
+agents-cli scaffold create chainlink-treasury-monitor \
   --agent adk \
   --deployment-target cloud_run \
   --region us-central1 \
   --prototype
 ```
 
-### 2. Query the Chainlink Data Streams Agent via A2A (`app/tools.py`)
+### 2. Multi-Agent Orchestration with `RemoteA2aAgent` & `SequentialAgent` (`app/agent.py`)
 
-When you subscribe to the Chainlink agent on Google Cloud Marketplace and register it in **Gemini Enterprise**, Discovery Engine automatically handles **OAuth 2.0 Dynamic Client Registration (DCR)** (`POST /dcr`) and token refresh (`POST /oauth/token`).
-
-Our A2A tool invokes the Chainlink agent’s `render_price_ui` (or `stream_prices`) skill and extracts the verified `application/json+a2ui` price ticks and freshness flags:
+In `app/agent.py`, we wire the remote **Chainlink Data Streams Price Agent** (`RemoteA2aAgent`) and our local **Treasury Risk Evaluator** (`Agent`) into an ADK `SequentialAgent` pipeline:
 
 ```python
-def fetch_chainlink_oracle_prices(
-    feeds: list[str] | None = None,
-) -> dict[str, Any]:
-    """Queries the Chainlink Data Streams A2A Agent for real-time prices."""
-    target_feeds = feeds or ["BTC/USD", "ETH/USD", "SOL/USD", "LINK/USD"]
-    a2a_url = os.getenv(
-        "CHAINLINK_A2A_URL",
-        "https://<YOUR_CHAINLINK_A2A_AGENT_URL>",
-    ).rstrip("/")
-    skill_id = os.getenv("CHAINLINK_SKILL_ID", "render_price_ui")
-
-    # Supports both Gemini Enterprise DCR Gateway and direct A2A JSON-RPC 2.0
-    discovery_agent = os.getenv("DISCOVERY_ENGINE_A2A_AGENT")
-    if discovery_agent:
-        return _fetch_via_discovery_engine_a2a(discovery_agent, target_feeds, skill_id)
-
-    rpc_request = {
-        "jsonrpc": "2.0",
-        "id": str(uuid.uuid4()),
-        "method": "message/send",
-        "params": {
-            "message": {
-                "role": "user",
-                "messageId": str(uuid.uuid4()),
-                "parts": [
-                    {
-                        "kind": "text",
-                        "text": json.dumps({"skill_id": skill_id, "feeds": target_feeds}),
-                    }
-                ],
-            }
-        },
-    }
-    with httpx.Client(timeout=20.0) as client:
-        resp = client.post(f"{a2a_url}/", json=rpc_request, headers=_get_headers())
-        resp.raise_for_status()
-        return _extract_feeds_from_rpc(resp.json())
-```
-
-### 3. Deterministic Risk Evaluation (`app/tools.py`)
-
-Financial agents should **never** rely on LLM token prediction for portfolio math. Instead, `evaluate_treasury_risk` computes exact valuations, drawdown percentages, and the DeFi vault health factor in Python, while leaving quantitative incident synthesis to Gemini:
-
-```python
-def evaluate_treasury_risk(feeds: list[dict[str, Any]]) -> dict[str, Any]:
-    """Evaluates live Chainlink prices against treasury floors and vault health."""
-    breaches: list[str] = []
-    stale_feeds = [f["feed"] for f in feeds if f.get("stale", False)]
-    if stale_feeds:
-        breaches.append(
-            f"CRITICAL ORACLE STALENESS: Feeds {stale_feeds} reported stale=True. "
-            "Halt automated treasury execution immediately."
-        )
-
-    # Calculate asset valuations, price floor drawdowns, and ETH vault health factor
-    eth_price = float(feed_map["ETH/USD"]["price"])
-    collateral_usd = VAULT_POSITION["collateral_eth"] * eth_price
-    health_factor = (
-        collateral_usd * VAULT_POSITION["liquidation_threshold"]
-    ) / VAULT_POSITION["debt_usdc"]
-
-    if health_factor < VAULT_POSITION["min_safe_health_factor"]:
-        breaches.append(
-            f"VAULT COLLATERAL RISK: ETH Vault Health Factor is {health_factor:.2f}x "
-            f"(below safe minimum {VAULT_POSITION['min_safe_health_factor']:.2f}x)."
-        )
-
-    return {
-        "status": "BREACH_DETECTED" if breaches else "HEALTHY",
-        "vault_health_factor": round(health_factor, 2),
-        "breaches": breaches,
-    }
-```
-
-### 4. Wire the ADK Orchestrator & `RemoteA2aAgent` (`app/agent.py`)
-
-Finally, we combine our deterministic tools and ADK’s native `RemoteA2aAgent` inside `app/agent.py`:
-
-```python
-from google.adk.agents import Agent
+from google.adk.agents import Agent, SequentialAgent
 from google.adk.agents.remote_a2a_agent import AGENT_CARD_WELL_KNOWN_PATH, RemoteA2aAgent
 from google.adk.apps import App
 from google.adk.models import Gemini
-from .tools import evaluate_treasury_risk, fetch_chainlink_oracle_prices, send_slack_risk_alert
+from .a2a_client import create_chainlink_a2a_httpx_client
+from .tools import evaluate_treasury_risk, send_slack_risk_alert
 
 chainlink_a2a_url = os.environ.get(
     "CHAINLINK_A2A_URL", "https://<YOUR_CHAINLINK_A2A_AGENT_URL>"
 ).rstrip("/")
 
-chainlink_price_oracle_subagent = RemoteA2aAgent(
+# 1. Remote A2A Agent: Official Chainlink Data Streams Price Agent
+chainlink_price_oracle_agent = RemoteA2aAgent(
     name="chainlink_data_streams_oracle",
-    description="Official Chainlink Data Streams A2A Agent for BTC, ETH, SOL, and LINK.",
+    description=(
+        "Official Chainlink Data Streams A2A Agent providing low-latency spot prices "
+        "for BTC/USD, ETH/USD, SOL/USD, and LINK/USD."
+    ),
     agent_card=f"{chainlink_a2a_url}{AGENT_CARD_WELL_KNOWN_PATH}",
+    httpx_client=create_chainlink_a2a_httpx_client(),
 )
 
-root_agent = Agent(
-    name="treasury_risk_monitor",
+# 2. Local ADK Agent: Treasury Risk Evaluator & Slack Incident Responder
+treasury_risk_evaluator_agent = Agent(
+    name="treasury_risk_evaluator",
     model=Gemini(model="gemini-2.5-flash"),
-    instruction=RISK_MONITOR_INSTRUCTION,
-    tools=[fetch_chainlink_oracle_prices, evaluate_treasury_risk, send_slack_risk_alert],
-    sub_agents=[chainlink_price_oracle_subagent],
+    instruction=RISK_EVALUATOR_INSTRUCTION,
+    tools=[evaluate_treasury_risk, send_slack_risk_alert],
+)
+
+# 3. Multi-Agent Pipeline: Chainlink Data Streams A2A Agent -> Treasury Risk Evaluator Agent
+root_agent = SequentialAgent(
+    name="treasury_risk_monitor",
+    description="Autonomous multi-agent treasury risk monitor.",
+    sub_agents=[
+        chainlink_price_oracle_agent,
+        treasury_risk_evaluator_agent,
+    ],
 )
 
 app = App(root_agent=root_agent, name="app")
 ```
 
+### 3. Deterministic Risk Evaluation & Slack Alerting (`app/tools.py`)
+
+Because `chainlink_data_streams_oracle` handles all A2A price discovery directly as a sub-agent, `app/tools.py` stays focused purely on deterministic portfolio math (`evaluate_treasury_risk`) and Slack Block Kit incident delivery (`send_slack_risk_alert`):
+
+```python
+def evaluate_treasury_risk(feeds: list[dict]) -> dict:
+    """Evaluates live Chainlink prices from the A2A sub-agent against treasury risk floors."""
+    total_usd_value = 0.0
+    breaches = []
+    price_map = {item["pair"]: item for item in feeds}
+
+    for pair, config in TREASURY_CONFIG["positions"].items():
+        feed = price_map.get(pair)
+        if feed.get("stale", False):
+            breaches.append(
+                f"STALE_ORACLE_DATA: {pair} tick at timestamp {feed.get('timestamp')} is marked stale (>10s old)."
+            )
+
+        spot_price = float(feed["price"])
+        total_usd_value += spot_price * config["units"]
+        if spot_price < config["price_floor"]:
+            drawdown_pct = ((config["price_floor"] - spot_price) / config["price_floor"]) * 100
+            breaches.append(
+                f"PRICE_FLOOR_BREACH: {pair} spot price (${spot_price:,.2f}) breached risk floor "
+                f"(${config['price_floor']:,.2f}) by -{drawdown_pct:.2f}%."
+            )
+
+    return {
+        "status": "BREACH_DETECTED" if breaches else "HEALTHY",
+        "total_portfolio_usd": round(total_usd_value, 2),
+        "breaches": breaches,
+    }
+```
+
 ---
 
-## Live Execution Output
+## Live Multi-Agent Execution Output
 
-Running the agent with `agents-cli run` queries the live Chainlink Data Streams Agent on Google Cloud Marketplace, detects the ETH vault collateral breach (`1.26x < 1.65x`), and dispatches a structured Slack Block Kit alert:
+Running the pipeline with `agents-cli run` executes `[chainlink_data_streams_oracle]` first over A2A against the live Chainlink Data Streams Agent on Google Cloud Marketplace, hands the verified prices to `[treasury_risk_evaluator]`, and dispatches a structured Slack Block Kit alert:
 
 ```bash
 $ agents-cli run "Run an immediate treasury risk check across BTC/USD, ETH/USD, SOL/USD, and LINK/USD."
 
-  Tool Call: fetch_chainlink_oracle_prices(feeds=['BTC/USD', 'ETH/USD', 'SOL/USD', 'LINK/USD'])
-  Tool Output: {
-    "feeds": [
-      {"feed": "BTC/USD",  "price": 75551.01,     "timestamp": 1776244260, "stale": false},
-      {"feed": "ETH/USD",  "price": 2358.28,      "timestamp": 1776244260, "stale": false},
-      {"feed": "SOL/USD",  "price": 91.74,        "timestamp": 1776244260, "stale": false},
-      {"feed": "LINK/USD", "price": 9.5880550942, "timestamp": 1776244260, "stale": false}
-    ]
-  }
-  Tool Call: evaluate_treasury_risk(...)
-  Tool Output: {"status": "BREACH_DETECTED", "total_portfolio_usd": 2928575.69, "vault_health_factor": 1.26}
-  Tool Call: send_slack_risk_alert(severity="CRITICAL", ...)
-  Tool Output: {"sent": true, "http_status": 200}
+[user]: Run an immediate treasury risk check across BTC/USD, ETH/USD, SOL/USD, and LINK/USD.
+[chainlink_data_streams_oracle]: {
+  "status": "success",
+  "source": "Chainlink Data Streams A2A Agent",
+  "updated_label": "Updated 10:04:27 UTC",
+  "feeds": [
+    {"pair": "BTC/USD",  "price": 81477.89, "timestamp": 1793009069, "stale": true},
+    {"pair": "ETH/USD",  "price": 2392.73,  "timestamp": 1793009069, "stale": true},
+    {"pair": "SOL/USD",  "price": 103.83,   "timestamp": 1793009069, "stale": true},
+    {"pair": "LINK/USD", "price": 12.07,    "timestamp": 1793009069, "stale": true}
+  ]
+}
+[treasury_risk_evaluator]:
+  [tool_call: evaluate_treasury_risk({"feeds": [...]})]
+  [tool_response: evaluate_treasury_risk -> {"status": "BREACH_DETECTED", "total_portfolio_usd": 11222601.65, "breach_count": 7}]
+  [tool_call: send_slack_risk_alert({"severity": "CRITICAL", "headline": "Treasury Risk Alert: Multiple Price Floor Breaches and Stale Oracle Data Detected", ...})]
+  [tool_response: send_slack_risk_alert -> {"status": "sent", "http_status": 200}]
 ```
 
 ---
 
 ## Try It Yourself
 
-Ready to build and deploy your own autonomous treasury monitor on Cloud Run?
+Ready to build and deploy your own autonomous multi-agent treasury monitor on Cloud Run?
 
 👉 **Clone the repository and follow the step-by-step setup guide on GitHub:**
 [**https://github.com/deepchenna/chainlink-treasury-monitor**](https://github.com/deepchenna/chainlink-treasury-monitor)
 
 The repository [`README.md`](https://github.com/deepchenna/chainlink-treasury-monitor#readme) includes full instructions for:
 1. Subscribing to the [**Chainlink Data Streams Price Agent on Google Cloud Marketplace**](https://console.cloud.google.com/marketplace/product/chainlink-labs-ltd-public/chainlink-data-streams-prices-agent) and inspecting DCR credentials (`generate_dcr.py`).
-2. Running the agent locally via `agents-cli run` and the interactive `adk web` UI.
+2. Running the multi-agent pipeline locally via `agents-cli run` and the interactive `adk web` UI.
 3. Deploying to **Cloud Run** (`agents-cli deploy`) with automated **Cloud Scheduler** triggers.
