@@ -200,6 +200,6 @@ Ready to build and deploy your own autonomous multi-agent treasury monitor on Cl
 [**https://github.com/deepchenna/chainlink-treasury-monitor**](https://github.com/deepchenna/chainlink-treasury-monitor)
 
 The repository [`README.md`](https://github.com/deepchenna/chainlink-treasury-monitor#readme) includes full instructions for:
-1. Subscribing to the [**Chainlink Data Streams Price Agent on Google Cloud Marketplace**](https://console.cloud.google.com/marketplace/product/chainlink-labs-ltd-public/chainlink-data-streams-prices-agent) and inspecting DCR credentials (`generate_dcr.py`).
+1. Subscribing to the [**Chainlink Data Streams Price Agent on Google Cloud Marketplace**](https://console.cloud.google.com/marketplace/product/chainlink-labs-ltd-public/chainlink-data-streams-prices-agent) and registering it in Gemini Enterprise (where Google Cloud manages OAuth 2.0 DCR automatically).
 2. Running the multi-agent pipeline locally via `agents-cli run` and the interactive `adk web` UI.
 3. Deploying to **Cloud Run** (`agents-cli deploy`) with automated **Cloud Scheduler** triggers.

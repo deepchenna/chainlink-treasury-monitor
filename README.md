@@ -53,7 +53,6 @@ chainlink-treasury-monitor/
 ├── agents-cli-manifest.yaml    # Google agents-cli project manifest
 ├── pyproject.toml              # Project dependencies (google-adk[a2a], httpx, etc.)
 ├── Dockerfile                  # Cloud Run production container
-├── generate_dcr.py             # Helper CLI to inspect/exchange GCP Marketplace DCR credentials
 ├── mock_server.py              # Local Slack webhook receiver & mock A2A server for offline dev
 ├── .env.example                # Environment variable template
 └── BLOG.md                     # Companion technical blog post
@@ -86,11 +85,13 @@ curl -s -X GET \
   "https://discoveryengine.googleapis.com/v1alpha/projects/${PROJECT_ID}/locations/global:fetchAgentCards" | jq .
 ```
 
-3. In the **Google Cloud Console $\rightarrow$ Gemini Enterprise (Agentspace) $\rightarrow$ Agents**, register the **Chainlink Data Streams Agent** from your Marketplace procurement. Google Cloud's backend automatically executes RFC 7591 **Dynamic Client Registration (DCR)** (`POST /dcr`) against Chainlink's endpoint and stores the resulting OAuth 2.0 `client_id` and `client_secret` in Discovery Engine.
-4. Inspect your active DCR authorization and Gemini Enterprise A2A Gateway endpoint using the included helper script:
+3. In the **Google Cloud Console $\rightarrow$ Gemini Enterprise (Agentspace) $\rightarrow$ Agents**, register the **Chainlink Data Streams Agent** from your Marketplace procurement. Google Cloud's backend automatically executes RFC 7591 **Dynamic Client Registration (DCR)** (`POST /dcr`) against Chainlink's endpoint and manages the OAuth 2.0 credentials in Discovery Engine.
+4. Retrieve your registered Gemini Enterprise A2A Gateway agent resource name via `curl`:
 
 ```bash
-python generate_dcr.py --inspect-gcp --project-id "${PROJECT_ID}"
+curl -s -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  -H "X-Goog-User-Project: ${PROJECT_ID}" \
+  "https://discoveryengine.googleapis.com/v1alpha/projects/${PROJECT_ID}/locations/global/collections/default_collection/engines" | jq .
 ```
 
 ---
