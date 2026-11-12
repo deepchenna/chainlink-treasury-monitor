@@ -10,13 +10,20 @@ import httpx
 SUPPORTED_PAIRS = ["BTC/USD", "ETH/USD", "SOL/USD", "LINK/USD"]
 
 
-def _extract_a2ui_feeds(payload: object) -> list[dict]:
-    """Extracts Chainlink price feeds from a Discovery Engine A2UI payload."""
+def _extract_feeds(payload: object) -> list[dict]:
+    """Extracts Chainlink price feeds from a Discovery Engine A2A response (stream_prices data or A2UI payload)."""
     if isinstance(payload, list):
         for item in payload:
-            if feeds := _extract_a2ui_feeds(item):
+            if feeds := _extract_feeds(item):
                 return feeds
     elif isinstance(payload, dict):
+        # 1. Direct structured stream_prices response containing feeds[]
+        if isinstance(payload.get("feeds"), list) and payload["feeds"]:
+            first = payload["feeds"][0]
+            if isinstance(first, dict) and "pair" in first and "price" in first:
+                return payload["feeds"]
+
+        # 2. Client-side A2UI card decoder fallback (records client_decode_timestamp)
         inline = payload.get("inlineData", {})
         if inline.get("mimeType") == "application/json+a2ui" and inline.get("data"):
             decoded = json.loads(base64.b64decode(inline["data"]))
@@ -25,19 +32,20 @@ def _extract_a2ui_feeds(payload: object) -> list[dict]:
                 for item in decoded.get("dataModelUpdate", {}).get("contents", [])
                 if "key" in item
             }
-            now = int(time.time())
+            client_decode_ts = int(time.time())
             return [
                 {
                     "pair": kv[f"feed{i}Pair"],
                     "price": float(kv[f"feed{i}Price"].replace("$", "").replace(",", "")),
-                    "timestamp": now,
+                    "timestamp": client_decode_ts,
+                    "client_decode_timestamp": client_decode_ts,
                     "stale": kv.get(f"feed{i}Status", "").lower() == "stale",
                 }
                 for i in range(4)
                 if f"feed{i}Pair" in kv and kv.get(f"feed{i}Price")
             ]
         for val in payload.values():
-            if feeds := _extract_a2ui_feeds(val):
+            if feeds := _extract_feeds(val):
                 return feeds
     return []
 
@@ -65,10 +73,11 @@ class ChainlinkA2AAuthTransport(httpx.AsyncBaseTransport):
         creds.refresh(google.auth.transport.requests.Request())
         quota_project = os.environ.get("CHAINLINK_QUOTA_PROJECT", os.environ.get("GOOGLE_CLOUD_PROJECT", ""))
 
+        skill_id = os.environ.get("CHAINLINK_SKILL_ID", "stream_prices")
         gateway_body = {
             "message": {
                 "role": "ROLE_USER",
-                "content": [{"text": json.dumps({"skill_id": "render_price_ui", "feeds": pairs[:4]})}],
+                "content": [{"text": json.dumps({"skill_id": skill_id, "feeds": pairs[:4]})}],
                 "messageId": f"req-{uuid.uuid4().hex[:8]}",
             }
         }
@@ -79,7 +88,7 @@ class ChainlinkA2AAuthTransport(httpx.AsyncBaseTransport):
                 json=gateway_body,
             )
             resp.raise_for_status()
-            feeds = _extract_a2ui_feeds(resp.json())
+            feeds = _extract_feeds(resp.json())
 
         a2a_response = {
             "jsonrpc": "2.0",

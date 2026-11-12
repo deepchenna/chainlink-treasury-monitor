@@ -27,7 +27,7 @@ Let’s look at how to scaffold an **Autonomous Multi-Agent Treasury Risk Monito
 Just as DeFi smart contracts rely on price oracles to calculate collateral ratios safely, enterprise and Web3 AI agents need a single source of truth for market valuation:
 
 1. **Sub-Second, Tamper-Proof Market Data:** Aggregates liquidity across leading exchanges with cryptographic provenance for major pairs (`BTC/USD`, `ETH/USD`, `SOL/USD`, and `LINK/USD`).
-2. **Built-In Freshness Guardrails:** Every price tick includes a unix `timestamp` and an explicit `stale` boolean flag so your agent never acts on outdated data.
+2. **Built-In Freshness Guardrails:** Every price tick includes a unix `timestamp` and an explicit `stale` boolean flag that flags stale data so your downstream risk logic can evaluate feed freshness explicitly.
 3. **True Multi-Agent Interoperability:** Instead of writing custom price-fetching tools, ADK's `RemoteA2aAgent` discovers the Chainlink agent via its `.well-known/agent.json` card (`https://<YOUR_CHAINLINK_A2A_AGENT_URL>/.well-known/agent.json`) and plugs it directly into a multi-agent workflow alongside your local Gemini risk-evaluation agent.
 
 ---
@@ -134,7 +134,7 @@ Because `chainlink_data_streams_oracle` handles all A2A price discovery directly
 
 ```python
 def evaluate_treasury_risk(feeds: list[dict]) -> dict:
-    """Evaluates live Chainlink prices from the A2A sub-agent against treasury risk floors."""
+    """Evaluates Chainlink Data Streams prices from the A2A sub-agent against treasury risk floors."""
     total_usd_value = 0.0
     breaches = []
     price_map = {item["pair"]: item for item in feeds}
@@ -164,9 +164,9 @@ def evaluate_treasury_risk(feeds: list[dict]) -> dict:
 
 ---
 
-## Live Multi-Agent Execution Output
+## Sample Multi-Agent Execution Output
 
-Running the pipeline with `agents-cli run` executes `[chainlink_data_streams_oracle]` first over A2A against the live Chainlink Data Streams Agent on Google Cloud Marketplace, hands the verified prices to `[treasury_risk_evaluator]`, and dispatches a structured Slack Block Kit alert:
+Running the pipeline with `agents-cli run` executes `[chainlink_data_streams_oracle]` first over A2A against the Chainlink Data Streams Agent on Google Cloud Marketplace (using the `stream_prices` skill), hands the verified prices to `[treasury_risk_evaluator]`, and dispatches a structured Slack Block Kit alert when configured risk thresholds are breached:
 
 ```bash
 $ agents-cli run "Run an immediate treasury risk check across BTC/USD, ETH/USD, SOL/USD, and LINK/USD."
@@ -174,21 +174,22 @@ $ agents-cli run "Run an immediate treasury risk check across BTC/USD, ETH/USD, 
 [user]: Run an immediate treasury risk check across BTC/USD, ETH/USD, SOL/USD, and LINK/USD.
 [chainlink_data_streams_oracle]: {
   "status": "success",
-  "source": "Chainlink Data Streams A2A Agent",
-  "updated_label": "Updated 10:04:27 UTC",
+  "source": "Chainlink Data Streams A2A Agent (stream_prices)",
   "feeds": [
-    {"pair": "BTC/USD",  "price": 81477.89, "timestamp": 1793009069, "stale": true},
-    {"pair": "ETH/USD",  "price": 2392.73,  "timestamp": 1793009069, "stale": true},
-    {"pair": "SOL/USD",  "price": 103.83,   "timestamp": 1793009069, "stale": true},
-    {"pair": "LINK/USD", "price": 12.07,    "timestamp": 1793009069, "stale": true}
+    {"pair": "BTC/USD",  "price": 81477.89, "timestamp": 1761473067, "stale": false},
+    {"pair": "ETH/USD",  "price": 2392.73,  "timestamp": 1761473067, "stale": false},
+    {"pair": "SOL/USD",  "price": 103.83,   "timestamp": 1761473067, "stale": false},
+    {"pair": "LINK/USD", "price": 12.07,    "timestamp": 1761473067, "stale": false}
   ]
 }
 [treasury_risk_evaluator]:
   [tool_call: evaluate_treasury_risk({"feeds": [...]})]
-  [tool_response: evaluate_treasury_risk -> {"status": "BREACH_DETECTED", "total_portfolio_usd": 11222601.65, "breach_count": 7}]
-  [tool_call: send_slack_risk_alert({"severity": "CRITICAL", "headline": "Treasury Risk Alert: Multiple Price Floor Breaches and Stale Oracle Data Detected", ...})]
+  [tool_response: evaluate_treasury_risk -> {"status": "BREACH_DETECTED", "total_portfolio_usd": 11222601.65, "breach_count": 3}]
+  [tool_call: send_slack_risk_alert({"severity": "CRITICAL", "headline": "Treasury Risk Alert: ETH/USD, SOL/USD, and LINK/USD Price Floor Breaches Detected", ...})]
   [tool_response: send_slack_risk_alert -> {"status": "sent", "http_status": 200}]
 ```
+
+> **Note on `stream_prices` vs. Client-Side A2UI Wrapper & Stale-Data Simulation:** The Chainlink Data Streams Agent returns live, accurate market prices and feed timestamps via its `stream_prices` skill, and explicitly flags stale data via the `stale` boolean field (`stale: false` during normal operation). If you inspect the client-side A2UI transport wrapper (`app/a2a_client.py`) or run an offline stale-data simulation to test the evaluator's `STALE_ORACLE_DATA` guardrail, note that the client wrapper records a `client_decode_timestamp` when decoding UI cards locally and any `stale: true` snapshot in testing is a client-side simulation—not stale data from the underlying Chainlink Data Streams Agent.
 
 ---
 

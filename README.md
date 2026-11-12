@@ -121,7 +121,7 @@ GOOGLE_CLOUD_PROJECT=your-gcp-project-id
 GOOGLE_CLOUD_LOCATION=us-central1
 GOOGLE_GENAI_USE_VERTEXAI=TRUE
 
-# Live Chainlink Data Streams Prices Agent (Google Cloud Marketplace)
+# Chainlink Data Streams Prices Agent (Google Cloud Marketplace)
 CHAINLINK_A2A_URL=https://<YOUR_CHAINLINK_A2A_AGENT_URL>
 
 # Gemini Enterprise A2A Gateway (Google Cloud Managed OAuth 2.0 DCR)
