@@ -73,7 +73,7 @@ class ChainlinkA2AAuthTransport(httpx.AsyncBaseTransport):
         creds.refresh(google.auth.transport.requests.Request())
         quota_project = os.environ.get("CHAINLINK_QUOTA_PROJECT", os.environ.get("GOOGLE_CLOUD_PROJECT", ""))
 
-        skill_id = os.environ.get("CHAINLINK_SKILL_ID", "stream_prices")
+        skill_id = os.environ.get("CHAINLINK_SKILL_ID", "render_price_ui")
         gateway_body = {
             "message": {
                 "role": "ROLE_USER",

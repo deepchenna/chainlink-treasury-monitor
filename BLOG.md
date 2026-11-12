@@ -166,7 +166,7 @@ def evaluate_treasury_risk(feeds: list[dict]) -> dict:
 
 ## Sample Multi-Agent Execution Output
 
-Running the pipeline with `agents-cli run` executes `[chainlink_data_streams_oracle]` first over A2A against the Chainlink Data Streams Agent on Google Cloud Marketplace (using the `stream_prices` skill), hands the verified prices to `[treasury_risk_evaluator]`, and dispatches a structured Slack Block Kit alert when configured risk thresholds are breached:
+Running the pipeline with `agents-cli run` executes `[chainlink_data_streams_oracle]` first over A2A against the Chainlink Data Streams Agent on Google Cloud Marketplace, hands the verified prices to `[treasury_risk_evaluator]`, and dispatches a structured Slack Block Kit alert when configured risk thresholds are breached:
 
 ```bash
 $ agents-cli run "Run an immediate treasury risk check across BTC/USD, ETH/USD, SOL/USD, and LINK/USD."
@@ -174,18 +174,17 @@ $ agents-cli run "Run an immediate treasury risk check across BTC/USD, ETH/USD, 
 [user]: Run an immediate treasury risk check across BTC/USD, ETH/USD, SOL/USD, and LINK/USD.
 [chainlink_data_streams_oracle]: {
   "status": "success",
-  "source": "Chainlink Data Streams A2A Agent (stream_prices)",
   "feeds": [
-    {"pair": "BTC/USD",  "price": 81477.89, "timestamp": 1761473067, "stale": false},
-    {"pair": "ETH/USD",  "price": 2392.73,  "timestamp": 1761473067, "stale": false},
-    {"pair": "SOL/USD",  "price": 103.83,   "timestamp": 1761473067, "stale": false},
-    {"pair": "LINK/USD", "price": 12.07,    "timestamp": 1761473067, "stale": false}
+    {"pair": "BTC/USD",  "price": 71830.26, "timestamp": 1794506757, "client_decode_timestamp": 1794506757, "stale": false},
+    {"pair": "ETH/USD",  "price": 2016.01,  "timestamp": 1794506757, "client_decode_timestamp": 1794506757, "stale": false},
+    {"pair": "SOL/USD",  "price": 81.68,    "timestamp": 1794506757, "client_decode_timestamp": 1794506757, "stale": false},
+    {"pair": "LINK/USD", "price": 10.01,    "timestamp": 1794506757, "client_decode_timestamp": 1794506757, "stale": false}
   ]
 }
 [treasury_risk_evaluator]:
   [tool_call: evaluate_treasury_risk({"feeds": [...]})]
-  [tool_response: evaluate_treasury_risk -> {"status": "BREACH_DETECTED", "total_portfolio_usd": 11222601.65, "breach_count": 3}]
-  [tool_call: send_slack_risk_alert({"severity": "CRITICAL", "headline": "Treasury Risk Alert: ETH/USD, SOL/USD, and LINK/USD Price Floor Breaches Detected", ...})]
+  [tool_response: evaluate_treasury_risk -> {"status": "BREACH_DETECTED", "evaluated_at_unix": 1794506761, "total_portfolio_usd": 9669514.1, "min_required_usd": 10000000.0, "breach_count": 4}]
+  [tool_call: send_slack_risk_alert({"severity": "CRITICAL", "headline": "Treasury Risk Breach Detected: Multiple Asset Price Floors and Total Portfolio Value Below Minimum Reserve.", "total_portfolio_usd": 9669514.1, ...})]
   [tool_response: send_slack_risk_alert -> {"status": "sent", "http_status": 200}]
 ```
 
