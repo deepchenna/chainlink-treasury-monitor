@@ -44,7 +44,7 @@ flowchart LR
         Scheduler["Cloud Scheduler / CLI\n(Trigger)"]
         Root["treasury_risk_monitor\n(ADK SequentialAgent)"]
         RemoteOracle["chainlink_data_streams_oracle\n(ADK RemoteA2aAgent)"]
-        RiskEval["treasury_risk_evaluator\n(ADK Agent + Gemini 2.5 Flash)"]
+        RiskEval["treasury_risk_evaluator\n(ADK Agent + Gemini 3.8 Flash)"]
         Slack["Slack Channel\n(#treasury-risk-alerts)"]
     end
 
@@ -62,7 +62,7 @@ flowchart LR
 ```
 
 1. **Stage 1 — `chainlink_data_streams_oracle` (`RemoteA2aAgent`):** Invokes the remote **Chainlink Data Streams Price Agent** over A2A and writes the verified `BTC/USD`, `ETH/USD`, `SOL/USD`, and `LINK/USD` feed snapshot (`pair`, `price`, `timestamp`, `stale`) into the shared ADK session.
-2. **Stage 2 — `treasury_risk_evaluator` (`Agent`):** Powered by **Gemini 2.5 Flash**, reads the oracle feed snapshot emitted by `chainlink_data_streams_oracle` from the session context, runs deterministic portfolio math (`evaluate_treasury_risk`), and dispatches a rich Block Kit incident alert to Slack (`send_slack_risk_alert`) whenever a floor or freshness invariant is breached.
+2. **Stage 2 — `treasury_risk_evaluator` (`Agent`):** Powered by **Gemini 3.8 Flash**, reads the oracle feed snapshot emitted by `chainlink_data_streams_oracle` from the session context, runs deterministic portfolio math (`evaluate_treasury_risk`), and dispatches a rich Block Kit incident alert to Slack (`send_slack_risk_alert`) whenever a floor or freshness invariant is breached.
 
 ---
 
@@ -110,7 +110,7 @@ chainlink_price_oracle_agent = RemoteA2aAgent(
 # 2. Local ADK Agent: Treasury Risk Evaluator & Slack Incident Responder
 treasury_risk_evaluator_agent = Agent(
     name="treasury_risk_evaluator",
-    model=Gemini(model="gemini-2.5-flash"),
+    model=Gemini(model="gemini-3.8-flash"),
     instruction=RISK_EVALUATOR_INSTRUCTION,
     tools=[evaluate_treasury_risk, send_slack_risk_alert],
 )

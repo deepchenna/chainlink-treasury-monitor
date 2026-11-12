@@ -1,6 +1,6 @@
 # Autonomous Treasury Risk Monitor (Chainlink Data Streams + Google Cloud ADK)
 
-An autonomous multi-agent crypto treasury risk monitor built with **Google's Agent Development Kit (ADK)**, **Google `agents-cli`**, and **Gemini 2.5 Flash**, connected directly to the [**Chainlink Data Streams Price Agent on Google Cloud Marketplace**](https://console.cloud.google.com/marketplace/product/chainlink-labs-ltd-public/chainlink-data-streams-prices-agent) over the **Agent-to-Agent (A2A)** protocol.
+An autonomous multi-agent crypto treasury risk monitor built with **Google's Agent Development Kit (ADK)**, **Google `agents-cli`**, and **Gemini 3.8 Flash**, connected directly to the [**Chainlink Data Streams Price Agent on Google Cloud Marketplace**](https://console.cloud.google.com/marketplace/product/chainlink-labs-ltd-public/chainlink-data-streams-prices-agent) over the **Agent-to-Agent (A2A)** protocol.
 
 ---
 
@@ -14,7 +14,7 @@ flowchart LR
         Scheduler["Cloud Scheduler / CLI\n(Trigger)"]
         Root["treasury_risk_monitor\n(ADK SequentialAgent)"]
         RemoteOracle["chainlink_data_streams_oracle\n(ADK RemoteA2aAgent)"]
-        RiskEval["treasury_risk_evaluator\n(ADK Agent + Gemini 2.5 Flash)"]
+        RiskEval["treasury_risk_evaluator\n(ADK Agent + Gemini 3.8 Flash)"]
         Slack["Slack Channel\n(#treasury-risk-alerts)"]
     end
 
@@ -33,7 +33,7 @@ flowchart LR
 
 ### How the Multi-Agent Pipeline Works
 1. **`chainlink_data_streams_oracle` (`RemoteA2aAgent` in `app/agent.py`):** Resolves the Chainlink agent's `.well-known/agent.json` card (`https://<YOUR_CHAINLINK_A2A_AGENT_URL>/.well-known/agent.json`) and communicates directly with the Chainlink Data Streams Price Agent over A2A (authenticated via `app/a2a_client.py`), emitting live `BTC/USD`, `ETH/USD`, `SOL/USD`, and `LINK/USD` prices and freshness flags into the shared ADK session.
-2. **`treasury_risk_evaluator` (`Agent` in `app/agent.py`):** Powered by **Gemini 2.5 Flash**, reads the verified oracle feed snapshot emitted by `chainlink_data_streams_oracle` from the conversation history, runs deterministic portfolio valuation (`evaluate_treasury_risk`), and dispatches rich Block Kit incident alerts to Slack (`send_slack_risk_alert`).
+2. **`treasury_risk_evaluator` (`Agent` in `app/agent.py`):** Powered by **Gemini 3.8 Flash**, reads the verified oracle feed snapshot emitted by `chainlink_data_streams_oracle` from the conversation history, runs deterministic portfolio valuation (`evaluate_treasury_risk`), and dispatches rich Block Kit incident alerts to Slack (`send_slack_risk_alert`).
 3. **`treasury_risk_monitor` (`SequentialAgent` in `app/agent.py`):** Orchestrates the end-to-end multi-agent workflow (`chainlink_price_oracle_agent` $\rightarrow$ `treasury_risk_evaluator_agent`).
 
 ---

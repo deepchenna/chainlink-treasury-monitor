@@ -33,7 +33,7 @@ from .tools import (
     send_slack_risk_alert,
 )
 
-MODEL = "gemini-2.5-flash"
+MODEL = "gemini-3.8-flash"
 
 chainlink_a2a_url = os.environ.get(
     "CHAINLINK_A2A_URL", "https://<YOUR_CHAINLINK_A2A_AGENT_URL>"
