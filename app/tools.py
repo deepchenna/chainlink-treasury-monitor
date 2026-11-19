@@ -39,7 +39,7 @@ def evaluate_treasury_risk(feeds: list[dict]) -> dict:
 
         if feed.get("stale", False):
             breaches.append(
-                f"STALE_ORACLE_DATA: {pair} tick at timestamp {feed.get('timestamp')} is marked stale (>10s old)."
+                f"STALE_ORACLE_DATA: {pair} tick at timestamp {feed.get('timestamp')} is marked stale."
             )
 
         spot_price = float(feed["price"])

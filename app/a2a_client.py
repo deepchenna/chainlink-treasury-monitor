@@ -11,7 +11,7 @@ SUPPORTED_PAIRS = ["BTC/USD", "ETH/USD", "SOL/USD", "LINK/USD"]
 
 
 def _extract_feeds(payload: object) -> list[dict]:
-    """Extracts Chainlink price feeds from a Discovery Engine A2A response (stream_prices data or A2UI payload)."""
+    """Extracts Chainlink price feeds from a Gemini Enterprise A2A response (stream_prices data or A2UI payload)."""
     if isinstance(payload, list):
         for item in payload:
             if feeds := _extract_feeds(item):
@@ -51,7 +51,7 @@ def _extract_feeds(payload: object) -> list[dict]:
 
 
 class ChainlinkA2AAuthTransport(httpx.AsyncBaseTransport):
-    """HTTPX transport for ADK RemoteA2aAgent using Google Cloud ADC against the Discovery Engine A2A Gateway."""
+    """HTTPX transport for ADK RemoteA2aAgent using Google Cloud ADC against the Gemini Enterprise A2A endpoint."""
 
     def __init__(self) -> None:
         self._inner = httpx.AsyncHTTPTransport()

@@ -49,14 +49,14 @@ flowchart LR
     end
 
     subgraph GCPEnt["Google Cloud Marketplace & Gemini Enterprise"]
-        Discovery["Discovery Engine A2A Gateway\n(OAuth 2.0 DCR Managed)"]
+        Discovery["Gemini Enterprise\n(A2A endpoint of the registered agent)"]
         ChainlinkAgent["Chainlink Data Streams\nPrices Agent (A2A)"]
     end
 
     Scheduler -->|"1. Triggers check"| Root
     Root -->|"2. Step 1: Delegate A2A turn"| RemoteOracle
     RemoteOracle <-->|"A2A Protocol\n(BTC, ETH, SOL, LINK)"| Discovery
-    Discovery <-->|"Bearer JWT (DCR)"| ChainlinkAgent
+    Discovery <-->|"OAuth 2.0"| ChainlinkAgent
     Root -->|"3. Step 2: Evaluate session feeds"| RiskEval
     RiskEval -->|"4. evaluate_treasury_risk &\nsend_slack_risk_alert"| Slack
 ```
@@ -143,7 +143,7 @@ def evaluate_treasury_risk(feeds: list[dict]) -> dict:
         feed = price_map.get(pair)
         if feed.get("stale", False):
             breaches.append(
-                f"STALE_ORACLE_DATA: {pair} tick at timestamp {feed.get('timestamp')} is marked stale (>10s old)."
+                f"STALE_ORACLE_DATA: {pair} tick at timestamp {feed.get('timestamp')} is marked stale."
             )
 
         spot_price = float(feed["price"])
@@ -200,6 +200,6 @@ Ready to build and deploy your own autonomous multi-agent treasury monitor on Cl
 [**https://github.com/deepchenna/chainlink-treasury-monitor**](https://github.com/deepchenna/chainlink-treasury-monitor)
 
 The repository [`README.md`](https://github.com/deepchenna/chainlink-treasury-monitor#readme) includes full instructions for:
-1. Subscribing to the [**Chainlink Data Streams Price Agent on Google Cloud Marketplace**](https://console.cloud.google.com/marketplace/product/chainlink-labs-ltd-public/chainlink-data-streams-prices-agent) and registering it in Gemini Enterprise (where Google Cloud manages OAuth 2.0 DCR automatically).
+1. Subscribing to the [**Chainlink Data Streams Price Agent on Google Cloud Marketplace**](https://console.cloud.google.com/marketplace/product/chainlink-labs-ltd-public/chainlink-data-streams-prices-agent) and adding it to your Gemini Enterprise app.
 2. Running the multi-agent pipeline locally via `agents-cli run` and the interactive `adk web` UI.
 3. Deploying to **Cloud Run** (`agents-cli deploy`) with automated **Cloud Scheduler** triggers.

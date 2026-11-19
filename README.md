@@ -19,14 +19,14 @@ flowchart LR
     end
 
     subgraph GCPEnt["Google Cloud Marketplace & Gemini Enterprise"]
-        Discovery["Discovery Engine A2A Gateway\n(OAuth 2.0 DCR Managed)"]
+        Discovery["Gemini Enterprise\n(A2A endpoint of the registered agent)"]
         ChainlinkAgent["Chainlink Data Streams\nPrices Agent (A2A)"]
     end
 
     Scheduler -->|"1. Triggers check"| Root
     Root -->|"2. Step 1: Delegate A2A turn"| RemoteOracle
     RemoteOracle <-->|"A2A Protocol\n(BTC, ETH, SOL, LINK)"| Discovery
-    Discovery <-->|"Bearer JWT (DCR)"| ChainlinkAgent
+    Discovery <-->|"OAuth 2.0"| ChainlinkAgent
     Root -->|"3. Step 2: Evaluate session feeds"| RiskEval
     RiskEval -->|"4. evaluate_treasury_risk &\nsend_slack_risk_alert"| Slack
 ```
@@ -44,7 +44,7 @@ flowchart LR
 chainlink-treasury-monitor/
 ├── app/
 │   ├── agent.py                # Multi-agent orchestration (SequentialAgent = RemoteA2aAgent + Agent)
-│   ├── a2a_client.py           # Authenticated HTTPX A2A transport (DCR / Discovery Engine Gateway)
+│   ├── a2a_client.py           # Authenticated HTTPX A2A transport (Gemini Enterprise A2A endpoint)
 │   ├── tools.py                # Deterministic risk evaluator & Slack Block Kit alerter
 │   ├── fast_api_app.py         # FastAPI A2A & ADK server entrypoint
 │   └── app_utils/              # A2A card, telemetry & typing utilities
@@ -71,24 +71,15 @@ chainlink-treasury-monitor/
 
 ---
 
-### Step 1: Subscribe & Register the Chainlink Agent (DCR)
+### Step 1: Subscribe & Add the Chainlink Agent to Gemini Enterprise
 
 1. Subscribe to the [**Chainlink Data Streams Price Agent**](https://console.cloud.google.com/marketplace/product/chainlink-labs-ltd-public/chainlink-data-streams-prices-agent) in Google Cloud Marketplace.
-2. Verify that the Marketplace entitlement and Agent Card (`https://<YOUR_CHAINLINK_A2A_AGENT_URL>/`) are visible in your project:
+2. In the Google Cloud console, open **Gemini Enterprise**, select your app, and click **Agents → Add agent**. Under **Agents via Marketplace**, select the **Chainlink Data Streams Agent**, review the agent details, and complete the authentication step.
+3. Retrieve your Gemini Enterprise app (engine) resource name via `curl`:
 
 ```bash
 export PROJECT_ID="your-gcp-project-id"
 
-curl -s -X GET \
-  -H "Authorization: Bearer $(gcloud auth print-access-token)" \
-  -H "X-Goog-User-Project: ${PROJECT_ID}" \
-  "https://discoveryengine.googleapis.com/v1alpha/projects/${PROJECT_ID}/locations/global:fetchAgentCards" | jq .
-```
-
-3. In the **Google Cloud Console $\rightarrow$ Gemini Enterprise (Agentspace) $\rightarrow$ Agents**, register the **Chainlink Data Streams Agent** from your Marketplace procurement. Google Cloud's backend automatically executes RFC 7591 **Dynamic Client Registration (DCR)** (`POST /dcr`) against Chainlink's endpoint and manages the OAuth 2.0 credentials in Discovery Engine.
-4. Retrieve your registered Gemini Enterprise A2A Gateway agent resource name via `curl`:
-
-```bash
 curl -s -H "Authorization: Bearer $(gcloud auth print-access-token)" \
   -H "X-Goog-User-Project: ${PROJECT_ID}" \
   "https://discoveryengine.googleapis.com/v1alpha/projects/${PROJECT_ID}/locations/global/collections/default_collection/engines" | jq .
@@ -124,7 +115,7 @@ GOOGLE_GENAI_USE_VERTEXAI=TRUE
 # Chainlink Data Streams Prices Agent (Google Cloud Marketplace)
 CHAINLINK_A2A_URL=https://<YOUR_CHAINLINK_A2A_AGENT_URL>
 
-# Gemini Enterprise A2A Gateway (Google Cloud Managed OAuth 2.0 DCR)
+# Gemini Enterprise A2A endpoint of the registered Chainlink agent
 CHAINLINK_DISCOVERY_ENGINE_A2A_URL=https://discoveryengine.googleapis.com/v1/projects/<PROJECT_NUMBER>/locations/global/collections/default_collection/engines/<ENGINE_ID>/assistants/default_assistant/agents/<AGENT_ID>/a2a/v1/message:stream
 DISCOVERY_ENGINE_A2A_AGENT=projects/<PROJECT_NUMBER>/locations/global/collections/default_collection/engines/<ENGINE_ID>/assistants/default_assistant/agents/<AGENT_ID>
 CHAINLINK_QUOTA_PROJECT=your-gcp-project-id
